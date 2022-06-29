@@ -1,4 +1,4 @@
-baseurl = "/"
+baseurl = "https://paudelgaurav.github.io/gblog"
 title = "Gaurav Writes"
 theme = "ghostwriter"
 
