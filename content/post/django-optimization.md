@@ -1,7 +1,7 @@
 +++
 title = "Django optimization(Database)"
 tags = [
-    "python",
+    "Python",
     "django",
     "ORM",
     "optimization",
