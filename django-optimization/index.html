@@ -45,7 +45,7 @@ total_price = 0
 for product in products:  
     total_price += product.price  
 avg_price = total_price / products.count()
-</code></pre><p>The above example is slower as we’re doing our heavy lifting in python, a more optimized solution would be</p><pre tabindex=0><code>**from** **django.db.models** **import** Avg  
+</code></pre><p>The above example is slower as we’re doing our heavy lifting in python, a more optimized solution would be</p><pre tabindex=0><code>from django.db.models import Avg  
 products = Products.objects.all().aggregate(Avg(&#39;price&#39;))  
 -&gt; {&#39;price__avg&#39;: _averge_price_of_all_products_}
 </code></pre><p>Django&rsquo;s official <a href=https://docs.djangoproject.com/en/4.0/topics/db/aggregation/>documentation</a> provides a detailed explanation regarding aggregations</p><p>These are the basic database optimization guide for Django and I will be posting a bit more advanced optimization guides which will include (pythonic code, caching, and some scaling approaches) in the upcoming days.</p><p>Till then, happy coding and see you soon.</p></div><footer class="post-footer clearfix"><p class=post-tags><span>Tagged:</span>
