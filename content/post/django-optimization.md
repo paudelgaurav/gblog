@@ -121,7 +121,7 @@ avg_price = total_price / products.count()
 The above example is slower as we’re doing our heavy lifting in python, a more optimized solution would be
 
 ```
-**from** **django.db.models** **import** Avg  
+from django.db.models import Avg  
 products = Products.objects.all().aggregate(Avg('price'))  
 -> {'price__avg': _averge_price_of_all_products_}
 ```
