@@ -1,0 +1,59 @@
+<!doctype html><html prefix="og: http://ogp.me/ns#"><head><meta charset=utf-8><meta http-equiv=x-ua-compatible content="IE=edge"><title>Django optimization(Database) &#183;</title><meta name=description content="Photo by Alex Blăjan on Unsplash
+The major bottleneck lies in our database portion so, we will be focusing on optimizing our database queries and lookups.
+For the example purpose, I will be creating some simple E-commerce models
+class Category(models.Model): name = models.CharField(max_length=150) class Product(models.Model): name = models.CharField(max_length=150) category = models.ForeignKey(Category, on_delete=models.CASCADE, related_name='products') price = models.FloatField() class Order(models.Model: products = models.ManyToManyField(Product) total_price = models.FloatField() N+1 Problem:
+Let’s look into the (N+1) query problem"><meta name=HandheldFriendly content="True"><meta name=MobileOptimized content="320"><meta name=generator content="Hugo 0.101.0"><meta name=robots content="index,follow"><meta name=viewport content="width=device-width,initial-scale=1"><meta property="og:title" content="Django optimization(Database)"><meta property="og:description" content="Photo by Alex Blăjan on Unsplash
+The major bottleneck lies in our database portion so, we will be focusing on optimizing our database queries and lookups.
+For the example purpose, I will be creating some simple E-commerce models
+class Category(models.Model): name = models.CharField(max_length=150) class Product(models.Model): name = models.CharField(max_length=150) category = models.ForeignKey(Category, on_delete=models.CASCADE, related_name='products') price = models.FloatField() class Order(models.Model: products = models.ManyToManyField(Product) total_price = models.FloatField() N+1 Problem:
+Let’s look into the (N+1) query problem"><meta property="og:type" content="article"><meta property="og:url" content="https://paudelgaurav.github.io/gblog/django-optimization/"><link rel=stylesheet href=https://paudelgaurav.github.io/gblogdist/site.css><link rel=stylesheet href=https://paudelgaurav.github.io/gblogdist/syntax.css><link rel=stylesheet href="https://fonts.googleapis.com/css?family=Open+Sans:300italic,400italic,600italic,700italic,400,600,700,300&subset=latin,cyrillic-ext,latin-ext,cyrillic"><link rel=stylesheet href=https://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css integrity=sha384-wvfXpqpZZVQGK6TAh5PVlGOfQNHSoD2xbE+QkPxCAFlNEevoEH3Sl0sibVcOQVnN crossorigin=anonymous></head><body><div id=wrapper><header class=site-header><div class=container><div class=site-title-wrapper><h1 class=site-title><a href=https://paudelgaurav.github.io/gblog>Gaurav Writes</a></h1><a class="button-square button-social hint--top" data-hint=Github aria-label=Github href=https://github.com/paudelgaurav rel=me><i class="fa fa-github-alt" aria-hidden=true></i></a>
+<a class="button-square button-social hint--top" data-hint=Email aria-label="Send an Email" href=mailto:paudelgaurav776@gmail.com><i class="fa fa-envelope" aria-hidden=true></i></a></div><ul class=site-nav></ul></div></header><div id=container><div class=container><article class=post-container itemscope itemtype=http://schema.org/BlogPosting><header class=post-header><h1 class=post-title itemprop="name headline">Django optimization(Database)</h1><p class="post-date post-line"><span>Published <time datetime=2022-06-29 itemprop=datePublished>Wed, Jun 29, 2022</time></span>
+<span>by</span>
+<span itemscope itemprop=author itemtype=https://schema.org/Person><span itemprop=name><a href=# itemprop=url rel=author>Gaurav Paudel</a></span></span></p></header><div class="post-content clearfix" itemprop=articleBody><p><img src=https://miro.medium.com/max/1400/1*5cSylV22q9dghIEax3fqnA.jpeg alt>Photo by <a href="https://unsplash.com/@alexb?utm_source=unsplash&utm_medium=referral&utm_content=creditCopyText">Alex Blăjan</a> on <a href="https://unsplash.com/s/photos/slow?utm_source=unsplash&utm_medium=referral&utm_content=creditCopyText">Unsplash</a></p><blockquote><p>The major bottleneck lies in our database portion so, we will be focusing on optimizing our database queries and lookups.</p></blockquote><p>For the example purpose, I will be creating some simple E-commerce models</p><pre tabindex=0><code>class Category(models.Model):  
+    name = models.CharField(max_length=150)
+
+class Product(models.Model):  
+    name = models.CharField(max_length=150)  
+    category = models.ForeignKey(Category, on_delete=models.CASCADE,   
+                   related_name=&#39;products&#39;)  
+    price = models.FloatField()  
+class Order(models.Model:  
+     products = models.ManyToManyField(Product)  
+     total_price = models.FloatField()
+</code></pre><p><strong>N+1 Problem:</strong><br>Let’s look into the (N+1) query problem</p><pre tabindex=0><code>products = Product.objects.all()  
+for product in products:  
+    print(product.category.name)  
+</code></pre><p>The above example suffers from an (N+1) problem as it makes one more DB lookup to fetch the category for each product. Let&rsquo;s optimize it by using <code>select_related</code> to join the Category table as well.</p><pre tabindex=0><code>products = Product.objects.all().select_related(&#39;category&#39;)  
+for product in products:  
+    print(product.category.name)
+</code></pre><p>Now category is already available to us as we have performed a join operation while fetching our products.</p><p>Simple things like <code>select_related</code>and <code>prefetch_related</code> can make your query faster. An easy rule to remember when to use is when you’re traversing a single table with relations like <code>ForeignKey</code> and <code>OnetoOne</code> use <code>select_related</code> or <code>prefetch_related</code> for multi-table traversal like <code>ManyToMany</code> and reversed <code>ForeignKey</code> relation</p><p><strong>Laziness of QuerySet</strong>:<br>QuerySet in Django is lazy <code>Model.objects.all()</code> returns a lazy QuerySet. which means that just calling <code>all()</code> here will not perform a database query. The database query is not performed until you access the data, for example by iterating over it (can happen in template code) or calling update, delete, etc.<br>So chaining many filters like</p><pre tabindex=0><code>queryset = Products.objects.filter(price=500)  
+queryset = queryset.filter(category__name=&#39;electronics&#39;)  
+print(queryset)  
+</code></pre><p>In the above example database query is performed only once when we invoke the print function, and multiple filters or order_by expression will be converted into a single SQL query by ORM. (awesome right ?)<br>Keeping this in mind, we should not evaluate a QuerySet until we use it.<br>Some common mistakes and bad practices will be, using <code>len()</code>, <code>bool()</code>, or <code>list()</code> with queryset which enforces evaluation of QuerySet.</p><p><strong>Writing optimized ORM queries:</strong><br><em>Case 1: When you need to update many rows of a table in the database</em><br>In this case, use<code>Queryset.update</code> rather than updating each instance.<br>For eg: I need to update a certain field of my model in a certain condition</p><pre tabindex=0><code>  
+Order.objects.filter(paid=True).update(paid_at=timezone.now())
+</code></pre><p><em>Case 2: When you need to update a certain field by adding or substracting with its value</em></p><pre tabindex=0><code>  
+product = Product.objects.get(foo=bar)  
+product.quantity = F(‘quantity’) + 10  
+product.save(update_fields=[‘quantity’])  
+</code></pre><p>In the above example, I didn’t need to fetch the current value of quantity for a specific product hence saving a database lookup with the <code>F()</code> expression and I even use <code>update_fields</code> inside my <code>save()</code> method to particularly update that single field.</p><p>Case 3: When you need to count the total number of items or find whether it exists or not</p><pre tabindex=0><code>products = Products.objects.all()  
+print(f&#39;There are {len(products)} in the Product table&#39;)if len(products):  
+    print(&#39;Products exists in the database&#39;)
+</code></pre><p>Here we use python to count the total number of products which is bad. Lets’s write a more optimized code with help of QuerySet functions.</p><pre tabindex=0><code>print(f&#39;There are {Products.objects.all().count()} in the Product table&#39;)if Products.objects.all().exists():  
+    print(&#39;Product exists in the database&#39;)
+</code></pre><p><strong>Proper use of Aggregate functions provided by SQL</strong>:<br>There are many cases where we need to perform some aggregation calculations in our table. Let SQL do that job rather than python as SQL is way faster for such cases.<br>For eg, we need to calculate the average price of our products in our Product model</p><pre tabindex=0><code>products = Product.objects.all()  
+total_price = 0  
+for product in products:  
+    total_price += product.price  
+avg_price = total_price / products.count()
+</code></pre><p>The above example is slower as we’re doing our heavy lifting in python, a more optimized solution would be</p><pre tabindex=0><code>**from** **django.db.models** **import** Avg  
+products = Products.objects.all().aggregate(Avg(&#39;price&#39;))  
+-&gt; {&#39;price__avg&#39;: _averge_price_of_all_products_}
+</code></pre><p>Django&rsquo;s official <a href=https://docs.djangoproject.com/en/4.0/topics/db/aggregation/>documentation</a> provides a detailed explanation regarding aggregations</p><p>These are the basic database optimization guide for Django and I will be posting a bit more advanced optimization guides which will include (pythonic code, caching, and some scaling approaches) in the upcoming days.</p><p>Till then, happy coding and see you soon.</p></div><footer class="post-footer clearfix"><p class=post-tags><span>Tagged:</span>
+<a href=/tags/python/>Python</a>,
+<a href=/tags/django/>django</a>,
+<a href=/tags/orm/>ORM</a>,
+<a href=/tags/optimization/>optimization</a>,
+<a href=/tags/refactoring/>refactoring</a></p><div class=share><a class=icon-twitter href="https://twitter.com/share?text=Django%20optimization%28Database%29&url=https%3a%2f%2fpaudelgaurav.github.io%2fgblog%2fdjango-optimization%2f" onclick='return window.open(this.href,"twitter-share","width=550,height=235"),!1' aria-label="Share on Twitter"><i class="fa fa-twitter" aria-hidden=true></i></a></div></footer></article></div></div></div><footer class=footer><div class=container><div class=site-title-wrapper><h1 class=site-title><a href=https://paudelgaurav.github.io/gblog>Gaurav Writes</a></h1><a class="button-square button-jump-top js-jump-top" href=# aria-label="Back to Top"><i class="fa fa-angle-up" aria-hidden=true></i></a></div><p class=footer-copyright><span>&copy; 2022 / Powered by <a href=https://gohugo.io/>Hugo</a></span></p><p class=footer-copyright><span><a href=https://github.com/roryg/ghostwriter>Ghostwriter theme</a> By <a href=http://jollygoodthemes.com>JollyGoodThemes</a></span>
+<span>/ <a href=https://github.com/jbub/ghostwriter>Ported</a> to Hugo By <a href=https://github.com/jbub>jbub</a></span></p></div></footer><script src=https://paudelgaurav.github.io/gblogjs/jquery-1.11.3.min.js></script>
+<script src=https://paudelgaurav.github.io/gblogjs/jquery.fitvids.js></script>
+<script src=https://paudelgaurav.github.io/gblogjs/scripts.js></script></body></html>
