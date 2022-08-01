@@ -1,4 +1,4 @@
-baseurl = "/"
+baseurl = "https://paudelgaurav.github.io/gblog"
 title = "Gaurav Writes"
 theme = "ghostwriter"
 
@@ -6,7 +6,7 @@ theme = "ghostwriter"
     mainSections = ["post"]
     intro = true
     headline = "Gaurav Paudel"
-    description = "I am a software developer working in wesionaryTeam"
+    description = "Software engineer from Nepal"
     github = "https://github.com/paudelgaurav"
     email = "paudelgaurav776@gmail.com"
     opengraph = true
