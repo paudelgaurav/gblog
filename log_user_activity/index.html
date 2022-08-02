@@ -7,169 +7,169 @@ First, let’s build our ActivityLog model
 from django.db import models from django.contrib.auth import get_user_model from django.contrib.contenttypes.models import ContentType from django.contrib.contenttypes.fields import GenericForeignKey User = get_user_model() CREATE, READ, UPDATE, DELETE = &#34;Create&#34;, &#34;Read&#34;, &#34;Update&#34;, &#34;Delete&#34; LOGIN, LOGOUT, LOGIN_FAILED = &#34;Login&#34;, &#34;Logout&#34;, &#34;Login Failed&#34; ACTION_TYPES = [ (CREATE, CREATE), (READ, READ), (UPDATE, UPDATE), (DELETE, DELETE), (LOGIN, LOGIN), (LOGOUT, LOGOUT), (LOGIN_FAILED, LOGIN_FAILED), ] SUCCESS, FAILED = &#34;Success&#34;, &#34;Failed&#34; ACTION_STATUS = [(SUCCESS, SUCCESS), (FAILED, FAILED)] class ActivityLog(models."><meta property="og:type" content="article"><meta property="og:url" content="https://paudelgaurav.github.io/gblog/log_user_activity/"><link rel=stylesheet href=https://paudelgaurav.github.io/gblog/dist/site.css><link rel=stylesheet href=https://paudelgaurav.github.io/gblog/dist/syntax.css><link rel=stylesheet href="https://fonts.googleapis.com/css?family=Open+Sans:300italic,400italic,600italic,700italic,400,600,700,300&subset=latin,cyrillic-ext,latin-ext,cyrillic"><link rel=stylesheet href=https://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css integrity=sha384-wvfXpqpZZVQGK6TAh5PVlGOfQNHSoD2xbE+QkPxCAFlNEevoEH3Sl0sibVcOQVnN crossorigin=anonymous></head><body><div id=wrapper><header class=site-header><div class=container><div class=site-title-wrapper><h1 class=site-title><a href=https://paudelgaurav.github.io/gblog/>Gaurav Writes</a></h1><a class="button-square button-social hint--top" data-hint=Github aria-label=Github href=https://github.com/paudelgaurav rel=me><i class="fa fa-github-alt" aria-hidden=true></i></a>
 <a class="button-square button-social hint--top" data-hint=Email aria-label="Send an Email" href=mailto:paudelgaurav776@gmail.com><i class="fa fa-envelope" aria-hidden=true></i></a></div><ul class=site-nav></ul></div></header><div id=container><div class=container><article class=post-container itemscope itemtype=http://schema.org/BlogPosting><header class=post-header><h1 class=post-title itemprop="name headline">Tracking user activity in Django(DRF)</h1><p class="post-date post-line"><span>Published <time datetime=2022-06-28 itemprop=datePublished>Tue, Jun 28, 2022</time></span>
 <span>by</span>
-<span itemscope itemprop=author itemtype=https://schema.org/Person><span itemprop=name><a href=# itemprop=url rel=author>Gaurav Paudel</a></span></span></p></header><div class="post-content clearfix" itemprop=articleBody><p><img src=https://miro.medium.com/max/1280/1*rqR2HOLKFlR-o6BQagT0QA.jpeg alt>Photo by <a href="https://unsplash.com/@lackingnothing?utm_source=unsplash&utm_medium=referral&utm_content=creditCopyText">Parker Coffman</a> on <a href="https://unsplash.com/s/photos/spy?utm_source=unsplash&utm_medium=referral&utm_content=creditCopyText">Unsplash</a></p><p>Here I will be demonstrating a simple way to track API-endpoints hits in Django.</p><p>First, let’s build our <code>ActivityLog</code> model</p><pre tabindex=0><code>
-from django.db import models
-from django.contrib.auth import get_user_model
-from django.contrib.contenttypes.models import ContentType
-from django.contrib.contenttypes.fields import GenericForeignKey
-
-User = get_user_model()
-
-CREATE, READ, UPDATE, DELETE = &#34;Create&#34;, &#34;Read&#34;, &#34;Update&#34;, &#34;Delete&#34;
-LOGIN, LOGOUT, LOGIN_FAILED = &#34;Login&#34;, &#34;Logout&#34;, &#34;Login Failed&#34;
-ACTION_TYPES = [
-    (CREATE, CREATE),
-    (READ, READ),
-    (UPDATE, UPDATE),
-    (DELETE, DELETE),
-    (LOGIN, LOGIN),
-    (LOGOUT, LOGOUT),
-    (LOGIN_FAILED, LOGIN_FAILED),
-]
-
-SUCCESS, FAILED = &#34;Success&#34;, &#34;Failed&#34;
-ACTION_STATUS = [(SUCCESS, SUCCESS), (FAILED, FAILED)]
-
-
-class ActivityLog(models.Model):
-    actor = models.ForeignKey(User, on_delete=models.CASCADE, null=True)
-    action_type = models.CharField(choices=ACTION_TYPES, max_length=15)
-    action_time = models.DateTimeField(auto_now_add=True)
-    remarks = models.TextField(blank=True, null=True)
-    status = models.CharField(choices=ACTION_STATUS, max_length=7, default=SUCCESS)
-    data = models.JSONField(default=dict)
-
-    # for generic relations
-    content_type = models.ForeignKey(
-        ContentType, models.SET_NULL, blank=True, null=True
-    )
-    object_id = models.PositiveIntegerField(blank=True, null=True)
-    content_object = GenericForeignKey()
-
-    def __str__(self) -&gt; str:
-        return f&#34;{self.action_type} by {self.actor} on {self.action_time}&#34;
-</code></pre><p>As the model is self-explanatory, here actor refers to the user performing the action of different operations like create, update, login, etc<br>And for the “generic” relationships between our ActivityLog model and instances of any other model in our system, we will be using <code>ContentType</code> and <code>GenericForeignKey</code>. (Explained well in <a href=https://docs.djangoproject.com/en/4.0/ref/contrib/contenttypes/>Django docs</a>)</p><p>Now, we need to create a mechanism so that whenever an API endpoint is hit an instance of this model is created.</p><pre tabindex=0><code>import logging
-
-from django.conf import settings
-from django.contrib.contenttypes.models import ContentType
-
-from rest_framework.exceptions import ValidationError
-
-from .models import ActivityLog, READ, CREATE, UPDATE, DELETE, SUCCESS, FAILED
-
-
-class ActivityLogMixin:
-    &#34;&#34;&#34;
-    Mixin to track user actions
-    :cvar log_message:
-        Log message to populate remarks in LogAction
-        type --&gt; str
-        set this value or override get_log_message
-        If not set then, default log message is generated
-    &#34;&#34;&#34;
-
-    log_message = None
-
-    def _get_action_type(self, request) -&gt; str:
-        return self.action_type_mapper().get(f&#34;{request.method.upper()}&#34;)
-
-    def _build_log_message(self, request) -&gt; str:
-        return f&#34;User: {self._get_user(request)} -- Action Type: {self._get_action_type(request)} -- Path: {request.path} -- Path Name: {request.resolver_match.url_name}&#34;
-
-    def get_log_message(self, request) -&gt; str:
-        return self.log_message or self._build_log_message(request)
-
-    @staticmethod
-    def action_type_mapper():
-        return {
-            &#34;GET&#34;: READ,
-            &#34;POST&#34;: CREATE,
-            &#34;PUT&#34;: UPDATE,
-            &#34;PATCH&#34;: UPDATE,
-            &#34;DELETE&#34;: DELETE,
-        }
-
-    @staticmethod
-    def _get_user(request):
-        return request.user if request.user.is_authenticated else None
-
-    def _write_log(self, request, response):
-        status = SUCCESS if response.status_code &lt; 400 else FAILED
-        actor = self._get_user(request)
-
-        if actor and not getattr(settings, &#34;TESTING&#34;, False):
-            logging.info(&#34;Started Log Entry&#34;)
-
-            data = {
-                &#34;actor&#34;: actor,
-                &#34;action_type&#34;: self._get_action_type(request),
-                &#34;status&#34;: status,
-                &#34;remarks&#34;: self.get_log_message(request),
-            }
-            try:
-                data[&#34;content_type&#34;] = ContentType.objects.get_for_model(
-                    self.get_queryset().model
-                )
-                data[&#34;content_object&#34;] = self.get_object()
-            except (AttributeError, ValidationError):
-                data[&#34;content_type&#34;] = None
-            except AssertionError:
-                pass
-
-            ActivityLog.objects.create(**data)
-
-    def finalize_response(self, request, *args, **kwargs):
-        response = super().finalize_response(request, *args, **kwargs)
-        self._write_log(request, response)
-        return response
-</code></pre><p>Above <code>ActivityLogMixin</code>override. <code>finalize_response</code>which is provided by rest_framework’s APIView which means we can use this mixin with APIView and also with viewsets.</p><p>Wait, we are tracking every API hit but the successful logins and failed attempts are yet to be tracked. Let’s add a <code>signals.py</code> file to catch <code>user_logged_in</code> , <code>user_login_failed</code>signals.</p><pre tabindex=0><code>from django.contrib.auth.signals import user_logged_in, user_login_failed
-from django.dispatch import receiver
-
-from .models import ActivityLog,  LOGIN, LOGIN_FAILED
-
-
-def get_client_ip(request):
-    x_forwarded_for = request.META.get(&#34;HTTP_X_FORWARDED_FOR&#34;)
-    return (
-        x_forwarded_for.split(&#34;,&#34;)[0]
-        if x_forwarded_for
-        else request.META.get(&#34;REMOTE_ADDR&#34;)
-    )
-
-
-@receiver(user_logged_in)
-def log_user_login(sender, request, user, **kwargs):
-    message = f&#34;{user.full_name} is logged in with ip:{get_client_ip(request)}&#34;
-    ActivityLog.objects.create(actor=user, action_type=LOGIN, remarks=message)
-
-
-@receiver(user_login_failed)
-def log_user_login_failed(sender, credentials, request, **kwargs):
-    message = f&#34;Login Attempt Failed for email {credentials.get(&#39;email&#39;)} with ip: {get_client_ip(request)}&#34;
-    ActivityLog.objects.create(action_type=LOGIN_FAILED, remarks=message)
-</code></pre><p>Now, we are ready to use the above things in our existing codebase let me show you an example.</p><pre tabindex=0><code>from rest_framework.views import APIView
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from rest_framework.viewsets import ReadOnlyModelViewSet
-
-from .mixins import ActivityLogMixin
-
-from .models import Post, Article
-from .serializers import PostSerializer
-
-
-class ArticleListView(ActivityLogMixin, APIView):
-    def get(self, request, *args, **kwargs):
-        return Response({&#34;articles&#34;: Article.objects.values()})
-
-
-class PostReadOnlyViewSet(ActivityLogMixin, ReadOnlyModelViewSet):
-    queryset = Post.objects.all()
-    serializer_class = PostSerializer
-
-    def get_log_message(self, request) -&gt; str:
-        return f&#34;{request.user} is reading blog posts&#34;
-</code></pre><p>Here, <code>ArticleListView</code>and <code>PostReadOnlyViewSet</code>are using <code>ActivityLogMixin</code>hence their endpoints hit will be tracked.</p><p>Did you notice an extra method <code>get_log_message</code>in <code>PostReadOnlyViewSet</code>to build its own custom message?</p><p>You can provide <code>log_message</code>or override <code>get_log_message</code> to populate remarks in <code>LogAction</code>. If not set then, a default log message is generated</p><p>Here is the working example in this <a href=https://github.com/paudelgaurav/django-user-activity><em>repo</em></a>, feel free to provide feedback and improvements. In the near future, we will be moving logic from mixins to middleware, will use a separate log-based database to store activity logs, etc but for now, let’s Keep It Simple Stupid</p><p>Happy coding</p></div><footer class="post-footer clearfix"><p class=post-tags><span>Tagged:</span>
+<span itemscope itemprop=author itemtype=https://schema.org/Person><span itemprop=name><a href=# itemprop=url rel=author>Gaurav Paudel</a></span></span></p></header><div class="post-content clearfix" itemprop=articleBody><p><img src=https://miro.medium.com/max/1280/1*rqR2HOLKFlR-o6BQagT0QA.jpeg alt>Photo by <a href="https://unsplash.com/@lackingnothing?utm_source=unsplash&utm_medium=referral&utm_content=creditCopyText">Parker Coffman</a> on <a href="https://unsplash.com/s/photos/spy?utm_source=unsplash&utm_medium=referral&utm_content=creditCopyText">Unsplash</a></p><p>Here I will be demonstrating a simple way to track API-endpoints hits in Django.</p><p>First, let’s build our <code>ActivityLog</code> model</p><div class=highlight><pre tabindex=0 style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-python data-lang=python><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#f92672>from</span> django.db <span style=color:#f92672>import</span> models
+</span></span><span style=display:flex><span><span style=color:#f92672>from</span> django.contrib.auth <span style=color:#f92672>import</span> get_user_model
+</span></span><span style=display:flex><span><span style=color:#f92672>from</span> django.contrib.contenttypes.models <span style=color:#f92672>import</span> ContentType
+</span></span><span style=display:flex><span><span style=color:#f92672>from</span> django.contrib.contenttypes.fields <span style=color:#f92672>import</span> GenericForeignKey
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>User <span style=color:#f92672>=</span> get_user_model()
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>CREATE, READ, UPDATE, DELETE <span style=color:#f92672>=</span> <span style=color:#e6db74>&#34;Create&#34;</span>, <span style=color:#e6db74>&#34;Read&#34;</span>, <span style=color:#e6db74>&#34;Update&#34;</span>, <span style=color:#e6db74>&#34;Delete&#34;</span>
+</span></span><span style=display:flex><span>LOGIN, LOGOUT, LOGIN_FAILED <span style=color:#f92672>=</span> <span style=color:#e6db74>&#34;Login&#34;</span>, <span style=color:#e6db74>&#34;Logout&#34;</span>, <span style=color:#e6db74>&#34;Login Failed&#34;</span>
+</span></span><span style=display:flex><span>ACTION_TYPES <span style=color:#f92672>=</span> [
+</span></span><span style=display:flex><span>    (CREATE, CREATE),
+</span></span><span style=display:flex><span>    (READ, READ),
+</span></span><span style=display:flex><span>    (UPDATE, UPDATE),
+</span></span><span style=display:flex><span>    (DELETE, DELETE),
+</span></span><span style=display:flex><span>    (LOGIN, LOGIN),
+</span></span><span style=display:flex><span>    (LOGOUT, LOGOUT),
+</span></span><span style=display:flex><span>    (LOGIN_FAILED, LOGIN_FAILED),
+</span></span><span style=display:flex><span>]
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>SUCCESS, FAILED <span style=color:#f92672>=</span> <span style=color:#e6db74>&#34;Success&#34;</span>, <span style=color:#e6db74>&#34;Failed&#34;</span>
+</span></span><span style=display:flex><span>ACTION_STATUS <span style=color:#f92672>=</span> [(SUCCESS, SUCCESS), (FAILED, FAILED)]
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#66d9ef>class</span> <span style=color:#a6e22e>ActivityLog</span>(models<span style=color:#f92672>.</span>Model):
+</span></span><span style=display:flex><span>    actor <span style=color:#f92672>=</span> models<span style=color:#f92672>.</span>ForeignKey(User, on_delete<span style=color:#f92672>=</span>models<span style=color:#f92672>.</span>CASCADE, null<span style=color:#f92672>=</span><span style=color:#66d9ef>True</span>)
+</span></span><span style=display:flex><span>    action_type <span style=color:#f92672>=</span> models<span style=color:#f92672>.</span>CharField(choices<span style=color:#f92672>=</span>ACTION_TYPES, max_length<span style=color:#f92672>=</span><span style=color:#ae81ff>15</span>)
+</span></span><span style=display:flex><span>    action_time <span style=color:#f92672>=</span> models<span style=color:#f92672>.</span>DateTimeField(auto_now_add<span style=color:#f92672>=</span><span style=color:#66d9ef>True</span>)
+</span></span><span style=display:flex><span>    remarks <span style=color:#f92672>=</span> models<span style=color:#f92672>.</span>TextField(blank<span style=color:#f92672>=</span><span style=color:#66d9ef>True</span>, null<span style=color:#f92672>=</span><span style=color:#66d9ef>True</span>)
+</span></span><span style=display:flex><span>    status <span style=color:#f92672>=</span> models<span style=color:#f92672>.</span>CharField(choices<span style=color:#f92672>=</span>ACTION_STATUS, max_length<span style=color:#f92672>=</span><span style=color:#ae81ff>7</span>, default<span style=color:#f92672>=</span>SUCCESS)
+</span></span><span style=display:flex><span>    data <span style=color:#f92672>=</span> models<span style=color:#f92672>.</span>JSONField(default<span style=color:#f92672>=</span>dict)
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>    <span style=color:#75715e># for generic relations</span>
+</span></span><span style=display:flex><span>    content_type <span style=color:#f92672>=</span> models<span style=color:#f92672>.</span>ForeignKey(
+</span></span><span style=display:flex><span>        ContentType, models<span style=color:#f92672>.</span>SET_NULL, blank<span style=color:#f92672>=</span><span style=color:#66d9ef>True</span>, null<span style=color:#f92672>=</span><span style=color:#66d9ef>True</span>
+</span></span><span style=display:flex><span>    )
+</span></span><span style=display:flex><span>    object_id <span style=color:#f92672>=</span> models<span style=color:#f92672>.</span>PositiveIntegerField(blank<span style=color:#f92672>=</span><span style=color:#66d9ef>True</span>, null<span style=color:#f92672>=</span><span style=color:#66d9ef>True</span>)
+</span></span><span style=display:flex><span>    content_object <span style=color:#f92672>=</span> GenericForeignKey()
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>    <span style=color:#66d9ef>def</span> __str__(self) <span style=color:#f92672>-&gt;</span> str:
+</span></span><span style=display:flex><span>        <span style=color:#66d9ef>return</span> <span style=color:#e6db74>f</span><span style=color:#e6db74>&#34;</span><span style=color:#e6db74>{</span>self<span style=color:#f92672>.</span>action_type<span style=color:#e6db74>}</span><span style=color:#e6db74> by </span><span style=color:#e6db74>{</span>self<span style=color:#f92672>.</span>actor<span style=color:#e6db74>}</span><span style=color:#e6db74> on </span><span style=color:#e6db74>{</span>self<span style=color:#f92672>.</span>action_time<span style=color:#e6db74>}</span><span style=color:#e6db74>&#34;</span>
+</span></span></code></pre></div><p>As the model is self-explanatory, here actor refers to the user performing the action of different operations like create, update, login, etc<br>And for the “generic” relationships between our ActivityLog model and instances of any other model in our system, we will be using <code>ContentType</code> and <code>GenericForeignKey</code>. (Explained well in <a href=https://docs.djangoproject.com/en/4.0/ref/contrib/contenttypes/>Django docs</a>)</p><p>Now, we need to create a mechanism so that whenever an API endpoint is hit an instance of this model is created.</p><div class=highlight><pre tabindex=0 style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-python data-lang=python><span style=display:flex><span><span style=color:#f92672>import</span> logging
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#f92672>from</span> django.conf <span style=color:#f92672>import</span> settings
+</span></span><span style=display:flex><span><span style=color:#f92672>from</span> django.contrib.contenttypes.models <span style=color:#f92672>import</span> ContentType
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#f92672>from</span> rest_framework.exceptions <span style=color:#f92672>import</span> ValidationError
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#f92672>from</span> .models <span style=color:#f92672>import</span> ActivityLog, READ, CREATE, UPDATE, DELETE, SUCCESS, FAILED
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#66d9ef>class</span> <span style=color:#a6e22e>ActivityLogMixin</span>:
+</span></span><span style=display:flex><span>    <span style=color:#e6db74>&#34;&#34;&#34;
+</span></span></span><span style=display:flex><span><span style=color:#e6db74>    Mixin to track user actions
+</span></span></span><span style=display:flex><span><span style=color:#e6db74>    :cvar log_message:
+</span></span></span><span style=display:flex><span><span style=color:#e6db74>        Log message to populate remarks in LogAction
+</span></span></span><span style=display:flex><span><span style=color:#e6db74>        type --&gt; str
+</span></span></span><span style=display:flex><span><span style=color:#e6db74>        set this value or override get_log_message
+</span></span></span><span style=display:flex><span><span style=color:#e6db74>        If not set then, default log message is generated
+</span></span></span><span style=display:flex><span><span style=color:#e6db74>    &#34;&#34;&#34;</span>
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>    log_message <span style=color:#f92672>=</span> <span style=color:#66d9ef>None</span>
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>    <span style=color:#66d9ef>def</span> <span style=color:#a6e22e>_get_action_type</span>(self, request) <span style=color:#f92672>-&gt;</span> str:
+</span></span><span style=display:flex><span>        <span style=color:#66d9ef>return</span> self<span style=color:#f92672>.</span>action_type_mapper()<span style=color:#f92672>.</span>get(<span style=color:#e6db74>f</span><span style=color:#e6db74>&#34;</span><span style=color:#e6db74>{</span>request<span style=color:#f92672>.</span>method<span style=color:#f92672>.</span>upper()<span style=color:#e6db74>}</span><span style=color:#e6db74>&#34;</span>)
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>    <span style=color:#66d9ef>def</span> <span style=color:#a6e22e>_build_log_message</span>(self, request) <span style=color:#f92672>-&gt;</span> str:
+</span></span><span style=display:flex><span>        <span style=color:#66d9ef>return</span> <span style=color:#e6db74>f</span><span style=color:#e6db74>&#34;User: </span><span style=color:#e6db74>{</span>self<span style=color:#f92672>.</span>_get_user(request)<span style=color:#e6db74>}</span><span style=color:#e6db74> -- Action Type: </span><span style=color:#e6db74>{</span>self<span style=color:#f92672>.</span>_get_action_type(request)<span style=color:#e6db74>}</span><span style=color:#e6db74> -- Path: </span><span style=color:#e6db74>{</span>request<span style=color:#f92672>.</span>path<span style=color:#e6db74>}</span><span style=color:#e6db74> -- Path Name: </span><span style=color:#e6db74>{</span>request<span style=color:#f92672>.</span>resolver_match<span style=color:#f92672>.</span>url_name<span style=color:#e6db74>}</span><span style=color:#e6db74>&#34;</span>
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>    <span style=color:#66d9ef>def</span> <span style=color:#a6e22e>get_log_message</span>(self, request) <span style=color:#f92672>-&gt;</span> str:
+</span></span><span style=display:flex><span>        <span style=color:#66d9ef>return</span> self<span style=color:#f92672>.</span>log_message <span style=color:#f92672>or</span> self<span style=color:#f92672>.</span>_build_log_message(request)
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>    <span style=color:#a6e22e>@staticmethod</span>
+</span></span><span style=display:flex><span>    <span style=color:#66d9ef>def</span> <span style=color:#a6e22e>action_type_mapper</span>():
+</span></span><span style=display:flex><span>        <span style=color:#66d9ef>return</span> {
+</span></span><span style=display:flex><span>            <span style=color:#e6db74>&#34;GET&#34;</span>: READ,
+</span></span><span style=display:flex><span>            <span style=color:#e6db74>&#34;POST&#34;</span>: CREATE,
+</span></span><span style=display:flex><span>            <span style=color:#e6db74>&#34;PUT&#34;</span>: UPDATE,
+</span></span><span style=display:flex><span>            <span style=color:#e6db74>&#34;PATCH&#34;</span>: UPDATE,
+</span></span><span style=display:flex><span>            <span style=color:#e6db74>&#34;DELETE&#34;</span>: DELETE,
+</span></span><span style=display:flex><span>        }
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>    <span style=color:#a6e22e>@staticmethod</span>
+</span></span><span style=display:flex><span>    <span style=color:#66d9ef>def</span> <span style=color:#a6e22e>_get_user</span>(request):
+</span></span><span style=display:flex><span>        <span style=color:#66d9ef>return</span> request<span style=color:#f92672>.</span>user <span style=color:#66d9ef>if</span> request<span style=color:#f92672>.</span>user<span style=color:#f92672>.</span>is_authenticated <span style=color:#66d9ef>else</span> <span style=color:#66d9ef>None</span>
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>    <span style=color:#66d9ef>def</span> <span style=color:#a6e22e>_write_log</span>(self, request, response):
+</span></span><span style=display:flex><span>        status <span style=color:#f92672>=</span> SUCCESS <span style=color:#66d9ef>if</span> response<span style=color:#f92672>.</span>status_code <span style=color:#f92672>&lt;</span> <span style=color:#ae81ff>400</span> <span style=color:#66d9ef>else</span> FAILED
+</span></span><span style=display:flex><span>        actor <span style=color:#f92672>=</span> self<span style=color:#f92672>.</span>_get_user(request)
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>        <span style=color:#66d9ef>if</span> actor <span style=color:#f92672>and</span> <span style=color:#f92672>not</span> getattr(settings, <span style=color:#e6db74>&#34;TESTING&#34;</span>, <span style=color:#66d9ef>False</span>):
+</span></span><span style=display:flex><span>            logging<span style=color:#f92672>.</span>info(<span style=color:#e6db74>&#34;Started Log Entry&#34;</span>)
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>            data <span style=color:#f92672>=</span> {
+</span></span><span style=display:flex><span>                <span style=color:#e6db74>&#34;actor&#34;</span>: actor,
+</span></span><span style=display:flex><span>                <span style=color:#e6db74>&#34;action_type&#34;</span>: self<span style=color:#f92672>.</span>_get_action_type(request),
+</span></span><span style=display:flex><span>                <span style=color:#e6db74>&#34;status&#34;</span>: status,
+</span></span><span style=display:flex><span>                <span style=color:#e6db74>&#34;remarks&#34;</span>: self<span style=color:#f92672>.</span>get_log_message(request),
+</span></span><span style=display:flex><span>            }
+</span></span><span style=display:flex><span>            <span style=color:#66d9ef>try</span>:
+</span></span><span style=display:flex><span>                data[<span style=color:#e6db74>&#34;content_type&#34;</span>] <span style=color:#f92672>=</span> ContentType<span style=color:#f92672>.</span>objects<span style=color:#f92672>.</span>get_for_model(
+</span></span><span style=display:flex><span>                    self<span style=color:#f92672>.</span>get_queryset()<span style=color:#f92672>.</span>model
+</span></span><span style=display:flex><span>                )
+</span></span><span style=display:flex><span>                data[<span style=color:#e6db74>&#34;content_object&#34;</span>] <span style=color:#f92672>=</span> self<span style=color:#f92672>.</span>get_object()
+</span></span><span style=display:flex><span>            <span style=color:#66d9ef>except</span> (<span style=color:#a6e22e>AttributeError</span>, ValidationError):
+</span></span><span style=display:flex><span>                data[<span style=color:#e6db74>&#34;content_type&#34;</span>] <span style=color:#f92672>=</span> <span style=color:#66d9ef>None</span>
+</span></span><span style=display:flex><span>            <span style=color:#66d9ef>except</span> <span style=color:#a6e22e>AssertionError</span>:
+</span></span><span style=display:flex><span>                <span style=color:#66d9ef>pass</span>
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>            ActivityLog<span style=color:#f92672>.</span>objects<span style=color:#f92672>.</span>create(<span style=color:#f92672>**</span>data)
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>    <span style=color:#66d9ef>def</span> <span style=color:#a6e22e>finalize_response</span>(self, request, <span style=color:#f92672>*</span>args, <span style=color:#f92672>**</span>kwargs):
+</span></span><span style=display:flex><span>        response <span style=color:#f92672>=</span> super()<span style=color:#f92672>.</span>finalize_response(request, <span style=color:#f92672>*</span>args, <span style=color:#f92672>**</span>kwargs)
+</span></span><span style=display:flex><span>        self<span style=color:#f92672>.</span>_write_log(request, response)
+</span></span><span style=display:flex><span>        <span style=color:#66d9ef>return</span> response
+</span></span></code></pre></div><p>Above <code>ActivityLogMixin</code>override. <code>finalize_response</code>which is provided by rest_framework’s APIView which means we can use this mixin with APIView and also with viewsets.</p><p>Wait, we are tracking every API hit but the successful logins and failed attempts are yet to be tracked. Let’s add a <code>signals.py</code> file to catch <code>user_logged_in</code> , <code>user_login_failed</code>signals.</p><div class=highlight><pre tabindex=0 style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-python data-lang=python><span style=display:flex><span><span style=color:#f92672>from</span> django.contrib.auth.signals <span style=color:#f92672>import</span> user_logged_in, user_login_failed
+</span></span><span style=display:flex><span><span style=color:#f92672>from</span> django.dispatch <span style=color:#f92672>import</span> receiver
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#f92672>from</span> .models <span style=color:#f92672>import</span> ActivityLog,  LOGIN, LOGIN_FAILED
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#66d9ef>def</span> <span style=color:#a6e22e>get_client_ip</span>(request):
+</span></span><span style=display:flex><span>    x_forwarded_for <span style=color:#f92672>=</span> request<span style=color:#f92672>.</span>META<span style=color:#f92672>.</span>get(<span style=color:#e6db74>&#34;HTTP_X_FORWARDED_FOR&#34;</span>)
+</span></span><span style=display:flex><span>    <span style=color:#66d9ef>return</span> (
+</span></span><span style=display:flex><span>        x_forwarded_for<span style=color:#f92672>.</span>split(<span style=color:#e6db74>&#34;,&#34;</span>)[<span style=color:#ae81ff>0</span>]
+</span></span><span style=display:flex><span>        <span style=color:#66d9ef>if</span> x_forwarded_for
+</span></span><span style=display:flex><span>        <span style=color:#66d9ef>else</span> request<span style=color:#f92672>.</span>META<span style=color:#f92672>.</span>get(<span style=color:#e6db74>&#34;REMOTE_ADDR&#34;</span>)
+</span></span><span style=display:flex><span>    )
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#a6e22e>@receiver</span>(user_logged_in)
+</span></span><span style=display:flex><span><span style=color:#66d9ef>def</span> <span style=color:#a6e22e>log_user_login</span>(sender, request, user, <span style=color:#f92672>**</span>kwargs):
+</span></span><span style=display:flex><span>    message <span style=color:#f92672>=</span> <span style=color:#e6db74>f</span><span style=color:#e6db74>&#34;</span><span style=color:#e6db74>{</span>user<span style=color:#f92672>.</span>full_name<span style=color:#e6db74>}</span><span style=color:#e6db74> is logged in with ip:</span><span style=color:#e6db74>{</span>get_client_ip(request)<span style=color:#e6db74>}</span><span style=color:#e6db74>&#34;</span>
+</span></span><span style=display:flex><span>    ActivityLog<span style=color:#f92672>.</span>objects<span style=color:#f92672>.</span>create(actor<span style=color:#f92672>=</span>user, action_type<span style=color:#f92672>=</span>LOGIN, remarks<span style=color:#f92672>=</span>message)
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#a6e22e>@receiver</span>(user_login_failed)
+</span></span><span style=display:flex><span><span style=color:#66d9ef>def</span> <span style=color:#a6e22e>log_user_login_failed</span>(sender, credentials, request, <span style=color:#f92672>**</span>kwargs):
+</span></span><span style=display:flex><span>    message <span style=color:#f92672>=</span> <span style=color:#e6db74>f</span><span style=color:#e6db74>&#34;Login Attempt Failed for email </span><span style=color:#e6db74>{</span>credentials<span style=color:#f92672>.</span>get(<span style=color:#e6db74>&#39;email&#39;</span>)<span style=color:#e6db74>}</span><span style=color:#e6db74> with ip: </span><span style=color:#e6db74>{</span>get_client_ip(request)<span style=color:#e6db74>}</span><span style=color:#e6db74>&#34;</span>
+</span></span><span style=display:flex><span>    ActivityLog<span style=color:#f92672>.</span>objects<span style=color:#f92672>.</span>create(action_type<span style=color:#f92672>=</span>LOGIN_FAILED, remarks<span style=color:#f92672>=</span>message)
+</span></span></code></pre></div><p>Now, we are ready to use the above things in our existing codebase let me show you an example.</p><div class=highlight><pre tabindex=0 style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-python data-lang=python><span style=display:flex><span><span style=color:#f92672>from</span> rest_framework.views <span style=color:#f92672>import</span> APIView
+</span></span><span style=display:flex><span><span style=color:#f92672>from</span> rest_framework.decorators <span style=color:#f92672>import</span> api_view
+</span></span><span style=display:flex><span><span style=color:#f92672>from</span> rest_framework.response <span style=color:#f92672>import</span> Response
+</span></span><span style=display:flex><span><span style=color:#f92672>from</span> rest_framework.viewsets <span style=color:#f92672>import</span> ReadOnlyModelViewSet
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#f92672>from</span> .mixins <span style=color:#f92672>import</span> ActivityLogMixin
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#f92672>from</span> .models <span style=color:#f92672>import</span> Post, Article
+</span></span><span style=display:flex><span><span style=color:#f92672>from</span> .serializers <span style=color:#f92672>import</span> PostSerializer
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#66d9ef>class</span> <span style=color:#a6e22e>ArticleListView</span>(ActivityLogMixin, APIView):
+</span></span><span style=display:flex><span>    <span style=color:#66d9ef>def</span> <span style=color:#a6e22e>get</span>(self, request, <span style=color:#f92672>*</span>args, <span style=color:#f92672>**</span>kwargs):
+</span></span><span style=display:flex><span>        <span style=color:#66d9ef>return</span> Response({<span style=color:#e6db74>&#34;articles&#34;</span>: Article<span style=color:#f92672>.</span>objects<span style=color:#f92672>.</span>values()})
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#66d9ef>class</span> <span style=color:#a6e22e>PostReadOnlyViewSet</span>(ActivityLogMixin, ReadOnlyModelViewSet):
+</span></span><span style=display:flex><span>    queryset <span style=color:#f92672>=</span> Post<span style=color:#f92672>.</span>objects<span style=color:#f92672>.</span>all()
+</span></span><span style=display:flex><span>    serializer_class <span style=color:#f92672>=</span> PostSerializer
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>    <span style=color:#66d9ef>def</span> <span style=color:#a6e22e>get_log_message</span>(self, request) <span style=color:#f92672>-&gt;</span> str:
+</span></span><span style=display:flex><span>        <span style=color:#66d9ef>return</span> <span style=color:#e6db74>f</span><span style=color:#e6db74>&#34;</span><span style=color:#e6db74>{</span>request<span style=color:#f92672>.</span>user<span style=color:#e6db74>}</span><span style=color:#e6db74> is reading blog posts&#34;</span>
+</span></span></code></pre></div><p>Here, <code>ArticleListView</code>and <code>PostReadOnlyViewSet</code>are using <code>ActivityLogMixin</code>hence their endpoints hit will be tracked.</p><p>Did you notice an extra method <code>get_log_message</code>in <code>PostReadOnlyViewSet</code>to build its own custom message?</p><p>You can provide <code>log_message</code>or override <code>get_log_message</code> to populate remarks in <code>LogAction</code>. If not set then, a default log message is generated</p><p>Here is the working example in this <a href=https://github.com/paudelgaurav/django-user-activity><em>repo</em></a>, feel free to provide feedback and improvements. In the near future, we will be moving logic from mixins to middleware, will use a separate log-based database to store activity logs, etc but for now, let’s Keep It Simple Stupid</p><p>Happy coding</p></div><footer class="post-footer clearfix"><p class=post-tags><span>Tagged:</span>
 <a href=/tags/python/>python</a>,
 <a href=/tags/django/>django</a>,
 <a href=/tags/drf/>DRF</a>,
