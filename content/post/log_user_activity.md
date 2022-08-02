@@ -17,7 +17,7 @@ author = "Gaurav Paudel"
 Here I will be demonstrating a simple way to track API-endpoints hits in Django.
 
 First, let’s build our `ActivityLog` model
-```
+```python
 
 from django.db import models
 from django.contrib.auth import get_user_model
@@ -65,7 +65,7 @@ As the model is self-explanatory, here actor refers to the user performing the a
 And for the “generic” relationships between our ActivityLog model and instances of any other model in our system, we will be using `ContentType` and `GenericForeignKey`. (Explained well in [Django docs](https://docs.djangoproject.com/en/4.0/ref/contrib/contenttypes/))
 
 Now, we need to create a mechanism so that whenever an API endpoint is hit an instance of this model is created.
-```
+```python
 import logging
 
 from django.conf import settings
@@ -145,7 +145,8 @@ Above `ActivityLogMixin`override. `finalize_response`which is provided by rest\_
 
 Wait, we are tracking every API hit but the successful logins and failed attempts are yet to be tracked. Let’s add a `signals.py` file to catch `user_logged_in` , `user_login_failed`signals.
 
-```
+
+```python
 from django.contrib.auth.signals import user_logged_in, user_login_failed
 from django.dispatch import receiver
 
@@ -175,7 +176,7 @@ def log_user_login_failed(sender, credentials, request, **kwargs):
 
 Now, we are ready to use the above things in our existing codebase let me show you an example.
 
-```
+```python
 from rest_framework.views import APIView
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
