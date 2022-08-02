@@ -1,0 +1,96 @@
+<!doctype html><html prefix="og: http://ogp.me/ns#"><head><meta charset=utf-8><meta http-equiv=x-ua-compatible content="IE=edge"><title>Asynchronous and Scheduled tasks in Django with django_q and Redis &#183;</title><meta name=description content="Photy by Roman Odintsov
+Some long-running tasks may affect the whole experience of software, so it’s better to offload those tasks and move on to perform other tasks.
+A bit about the django_q package. It is indeed one of my favorite third-party packages built for Django. Using this package, we can queue our tasks, run tasks in another cluster and even perform some scheduled cron jobs.
+So let’s get started."><meta name=HandheldFriendly content="True"><meta name=MobileOptimized content="320"><meta name=generator content="Hugo 0.101.0"><meta name=robots content="index,follow"><meta name=viewport content="width=device-width,initial-scale=1"><meta property="og:title" content="Asynchronous and Scheduled tasks in Django with django_q and Redis"><meta property="og:description" content="Photy by Roman Odintsov
+Some long-running tasks may affect the whole experience of software, so it’s better to offload those tasks and move on to perform other tasks.
+A bit about the django_q package. It is indeed one of my favorite third-party packages built for Django. Using this package, we can queue our tasks, run tasks in another cluster and even perform some scheduled cron jobs.
+So let’s get started."><meta property="og:type" content="article"><meta property="og:url" content="https://paudelgaurav.github.io/gblog/async-with-django_q/"><link rel=stylesheet href=https://paudelgaurav.github.io/gblog/dist/site.css><link rel=stylesheet href=https://paudelgaurav.github.io/gblog/dist/syntax.css><link rel=stylesheet href="https://fonts.googleapis.com/css?family=Open+Sans:300italic,400italic,600italic,700italic,400,600,700,300&subset=latin,cyrillic-ext,latin-ext,cyrillic"><link rel=stylesheet href=https://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css integrity=sha384-wvfXpqpZZVQGK6TAh5PVlGOfQNHSoD2xbE+QkPxCAFlNEevoEH3Sl0sibVcOQVnN crossorigin=anonymous></head><body><div id=wrapper><header class=site-header><div class=container><div class=site-title-wrapper><h1 class=site-title><a href=https://paudelgaurav.github.io/gblog/>Gaurav Writes</a></h1><a class="button-square button-social hint--top" data-hint=Github aria-label=Github href=https://github.com/paudelgaurav rel=me><i class="fa fa-github-alt" aria-hidden=true></i></a>
+<a class="button-square button-social hint--top" data-hint=Email aria-label="Send an Email" href=mailto:paudelgaurav776@gmail.com><i class="fa fa-envelope" aria-hidden=true></i></a></div><ul class=site-nav></ul></div></header><div id=container><div class=container><article class=post-container itemscope itemtype=http://schema.org/BlogPosting><header class=post-header><h1 class=post-title itemprop="name headline">Asynchronous and Scheduled tasks in Django with django_q and Redis</h1><p class="post-date post-line"><span>Published <time datetime=2022-08-02 itemprop=datePublished>Tue, Aug 2, 2022</time></span>
+<span>by</span>
+<span itemscope itemprop=author itemtype=https://schema.org/Person><span itemprop=name><a href=# itemprop=url rel=author>Gaurav Paudel</a></span></span></p></header><div class="post-content clearfix" itemprop=articleBody><p><img src=https://miro.medium.com/max/1400/1*lKovpT1kBDQdv6xsJu8eUQ.jpeg alt>Photy by <a href=https://www.pexels.com/photo/original-painting-of-gautama-buddha-on-wall-of-shabby-house-4552137/>Roman Odintsov</a></p><blockquote><p>Some long-running tasks may affect the whole experience of software, so it’s better to offload those tasks and move on to perform other tasks.</p></blockquote><p>A bit about the django_q package. It is indeed one of my favorite third-party packages built for Django. Using this package, we can queue our tasks, run tasks in another cluster and even perform some scheduled cron jobs.</p><p><strong>So let’s get started.</strong></p><hr><p>First, we need to install django_q:<br><code>pip install django_q</code></p><div class=highlight><pre tabindex=0 style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-python data-lang=python><span style=display:flex><span><span style=color:#75715e># settings.py example</span>
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>INSTALLED_APPS <span style=color:#f92672>=</span> (  
+</span></span><span style=display:flex><span><span style=color:#75715e># other apps</span>
+</span></span><span style=display:flex><span>    <span style=color:#e6db74>&#39;django_q&#39;</span>,  
+</span></span><span style=display:flex><span>)
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>Q_CLUSTER <span style=color:#f92672>=</span> {
+</span></span><span style=display:flex><span>    <span style=color:#e6db74>&#39;name&#39;</span>: <span style=color:#e6db74>&#39;myproject&#39;</span>,
+</span></span><span style=display:flex><span>    <span style=color:#e6db74>&#39;workers&#39;</span>: <span style=color:#ae81ff>8</span>,
+</span></span><span style=display:flex><span>    <span style=color:#e6db74>&#39;recycle&#39;</span>: <span style=color:#ae81ff>500</span>,
+</span></span><span style=display:flex><span>    <span style=color:#e6db74>&#39;timeout&#39;</span>: <span style=color:#ae81ff>60</span>,
+</span></span><span style=display:flex><span>    <span style=color:#e6db74>&#39;compress&#39;</span>: <span style=color:#66d9ef>True</span>,
+</span></span><span style=display:flex><span>    <span style=color:#e6db74>&#39;save_limit&#39;</span>: <span style=color:#ae81ff>250</span>,
+</span></span><span style=display:flex><span>    <span style=color:#e6db74>&#39;queue_limit&#39;</span>: <span style=color:#ae81ff>500</span>,
+</span></span><span style=display:flex><span>    <span style=color:#e6db74>&#39;cpu_affinity&#39;</span>: <span style=color:#ae81ff>1</span>,
+</span></span><span style=display:flex><span>    <span style=color:#e6db74>&#39;label&#39;</span>: <span style=color:#e6db74>&#39;Django Q&#39;</span>,
+</span></span><span style=display:flex><span>    <span style=color:#e6db74>&#39;redis&#39;</span>: {
+</span></span><span style=display:flex><span>        <span style=color:#e6db74>&#39;host&#39;</span>: <span style=color:#e6db74>&#39;127.0.0.1&#39;</span>,
+</span></span><span style=display:flex><span>        <span style=color:#e6db74>&#39;port&#39;</span>: <span style=color:#ae81ff>6379</span>,
+</span></span><span style=display:flex><span>        <span style=color:#e6db74>&#39;db&#39;</span>: <span style=color:#ae81ff>0</span>, 
+</span></span><span style=display:flex><span>    }
+</span></span><span style=display:flex><span>}
+</span></span></code></pre></div><p>Configure your <code>settings.py</code> as above and perform a quick migration with <code>python manage.py migrate</code> and finally, run <code>python manage.py qcluster</code>.<br>But before this, make sure Redis is up and running.<br><em>For more details about Redis commands visit this</em> <a href=https://www.tutorialspoint.com/redis/redis_commands.htm><em>link</em></a><em>.</em></p><hr><p><em>Our setup is complete. Let’s move toward some common problems and their solutions.</em></p><hr><p><strong>First problem: <em>We need to set up a corn job that runs daily and performs a specific task.</em></strong></p><p>Let’s consider this:<br><code>Event(title=’PYCON-2077’, remaining_days=20075)</code></p><p>Now I need to subtract a day from the <code>remaining_days</code> right?<br>So, let&rsquo;s create a task and schedule it on a daily basis.</p><div class=highlight><pre tabindex=0 style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-python data-lang=python><span style=display:flex><span><span style=color:#f92672>from</span> django.db.models <span style=color:#f92672>import</span> Case, F, When
+</span></span><span style=display:flex><span><span style=color:#f92672>from</span> django_q.models <span style=color:#f92672>import</span> Schedule
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#f92672>from</span> my_app.models <span style=color:#f92672>import</span> Event
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#66d9ef>def</span> <span style=color:#a6e22e>decrease_remaining_days_from_event</span>():
+</span></span><span style=display:flex><span>    Event<span style=color:#f92672>.</span>objects<span style=color:#f92672>.</span>update(
+</span></span><span style=display:flex><span>        remaining_days<span style=color:#f92672>=</span>Case(
+</span></span><span style=display:flex><span>            When(remaining_days__gt<span style=color:#f92672>=</span><span style=color:#ae81ff>0</span>, then<span style=color:#f92672>=</span>F(<span style=color:#e6db74>&#34;remaining_days&#34;</span>) <span style=color:#f92672>-</span> <span style=color:#ae81ff>1</span>), default<span style=color:#f92672>=</span><span style=color:#ae81ff>0</span>
+</span></span><span style=display:flex><span>        )
+</span></span><span style=display:flex><span>    )
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>Schedule<span style=color:#f92672>.</span>objects<span style=color:#f92672>.</span>create(
+</span></span><span style=display:flex><span>    func<span style=color:#f92672>=</span><span style=color:#e6db74>&#34;decrease_remaining_days_from_event&#34;</span>,
+</span></span><span style=display:flex><span>    schedule_type<span style=color:#f92672>=</span>Schedule<span style=color:#f92672>.</span>DAILY,
+</span></span><span style=display:flex><span>)
+</span></span></code></pre></div><p>But what I really love to do is create a management command that will create a scheduler.</p><div class=highlight><pre tabindex=0 style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-python data-lang=python><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#f92672>from</span> django.core.management.base <span style=color:#f92672>import</span> BaseCommand
+</span></span><span style=display:flex><span><span style=color:#f92672>from</span> django_q.models <span style=color:#f92672>import</span> Schedule
+</span></span><span style=display:flex><span><span style=color:#f92672>from</span> django_q.tasks <span style=color:#f92672>import</span> schedule
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#66d9ef>class</span> <span style=color:#a6e22e>Command</span>(BaseCommand):
+</span></span><span style=display:flex><span>    help <span style=color:#f92672>=</span> <span style=color:#e6db74>&#34;Create CRON scheduler tasks&#34;</span>
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>    <span style=color:#66d9ef>def</span> <span style=color:#a6e22e>handle</span>(self, <span style=color:#f92672>*</span>args, <span style=color:#f92672>**</span>options):
+</span></span><span style=display:flex><span>        schedule(
+</span></span><span style=display:flex><span>            name<span style=color:#f92672>=</span><span style=color:#e6db74>&#34;Decrease Remaining Days From Event&#34;</span>,
+</span></span><span style=display:flex><span>            func<span style=color:#f92672>=</span><span style=color:#e6db74>&#34;my_app.tasks.decrease_remaining_days_from_event&#34;</span>,
+</span></span><span style=display:flex><span>            schedule_type<span style=color:#f92672>=</span>Schedule<span style=color:#f92672>.</span>DAILY,
+</span></span><span style=display:flex><span>        )
+</span></span><span style=display:flex><span>        self<span style=color:#f92672>.</span>stdout<span style=color:#f92672>.</span>write(self<span style=color:#f92672>.</span>style<span style=color:#f92672>.</span>SUCCESS(<span style=color:#e6db74>&#34;Successfully created CRON tasks&#34;</span>))
+</span></span></code></pre></div><hr><p><strong>Second Problem: <em>After a task is completed, I need to send an email (or perform any heavy task), which takes a bit of time and my end-user has to suffer.</em></strong></p><p>So what we can do in this case is quickly offload those tasks to the <code>django_q cluster</code> .</p><div class=highlight><pre tabindex=0 style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-python data-lang=python><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#f92672>from</span> django.http <span style=color:#f92672>import</span> HttpResponse
+</span></span><span style=display:flex><span><span style=color:#f92672>from</span> django_q.tasks <span style=color:#f92672>import</span> async_task
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#f92672>from</span> my_app.models <span style=color:#f92672>import</span> Event
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span><span style=color:#66d9ef>def</span> <span style=color:#a6e22e>create_event</span>(request, <span style=color:#f92672>*</span>args, <span style=color:#f92672>**</span>kwargs):
+</span></span><span style=display:flex><span>    Event<span style=color:#f92672>.</span>objects<span style=color:#f92672>.</span>create(title<span style=color:#f92672>=</span><span style=color:#e6db74>&#34;my cool event&#34;</span>, remaining_days<span style=color:#f92672>=</span><span style=color:#ae81ff>10</span>)
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>    msg <span style=color:#f92672>=</span> <span style=color:#e6db74>&#34;A new event has been created&#34;</span>
+</span></span><span style=display:flex><span>    async_task(
+</span></span><span style=display:flex><span>        <span style=color:#e6db74>&#34;django.core.mail.send_mail&#34;</span>,
+</span></span><span style=display:flex><span>        <span style=color:#e6db74>&#34;New Event&#34;</span>,
+</span></span><span style=display:flex><span>        msg,
+</span></span><span style=display:flex><span>        <span style=color:#e6db74>&#34;from@example.com&#34;</span>,
+</span></span><span style=display:flex><span>        [<span style=color:#e6db74>&#34;to@example.com&#34;</span>],
+</span></span><span style=display:flex><span>    )
+</span></span><span style=display:flex><span>    async_task(<span style=color:#e6db74>&#34;time.sleep&#34;</span>, <span style=color:#ae81ff>10</span>)
+</span></span><span style=display:flex><span>
+</span></span><span style=display:flex><span>    <span style=color:#66d9ef>return</span> HttpResponse(status<span style=color:#f92672>=</span><span style=color:#ae81ff>201</span>)
+</span></span></code></pre></div><p>Although the above view <code>create_event</code> does time-consuming tasks like sending mail and sleeping for 10 seconds :), the response will be instant as these tasks are offloaded to the cluster and are handled asynchronously.</p><hr><p>Here is a working example in this <a href=https://github.com/paudelgaurav/django_q_example>repo</a>, feel free to provide feedback and improvements.</p><blockquote><p>This is just the tip of the iceberg of what you can do with the django_q package. For more information, do visit its <a href=https://django-q.readthedocs.io/en/latest/>official site.</a></p></blockquote><hr><p>Till then, hasta la vista, Happy coding.</p></div><footer class="post-footer clearfix"><p class=post-tags><span>Tagged:</span>
+<a href=/tags/python/>Python</a>,
+<a href=/tags/django/>django</a>,
+<a href=/tags/orm/>ORM</a>,
+<a href=/tags/optimization/>optimization</a>,
+<a href=/tags/refactoring/>refactoring</a></p><div class=share><a class=icon-twitter href="https://twitter.com/share?text=Asynchronous%20and%20Scheduled%20tasks%20in%20Django%20with%20django_q%20and%20Redis&url=https%3a%2f%2fpaudelgaurav.github.io%2fgblog%2fasync-with-django_q%2f" onclick='return window.open(this.href,"twitter-share","width=550,height=235"),!1' aria-label="Share on Twitter"><i class="fa fa-twitter" aria-hidden=true></i></a></div></footer></article></div></div></div><footer class=footer><div class=container><div class=site-title-wrapper><h1 class=site-title><a href=https://paudelgaurav.github.io/gblog/>Gaurav Writes</a></h1><a class="button-square button-jump-top js-jump-top" href=# aria-label="Back to Top"><i class="fa fa-angle-up" aria-hidden=true></i></a></div><p class=footer-copyright><span>&copy; 2022 / Powered by <a href=https://gohugo.io/>Hugo</a></span></p><p class=footer-copyright><span><a href=https://github.com/roryg/ghostwriter>Ghostwriter theme</a> By <a href=http://jollygoodthemes.com>JollyGoodThemes</a></span>
+<span>/ <a href=https://github.com/jbub/ghostwriter>Ported</a> to Hugo By <a href=https://github.com/jbub>jbub</a></span></p></div></footer><script src=https://paudelgaurav.github.io/gblog/js/jquery-1.11.3.min.js></script>
+<script src=https://paudelgaurav.github.io/gblog/js/jquery.fitvids.js></script>
+<script src=https://paudelgaurav.github.io/gblog/js/scripts.js></script></body></html>
