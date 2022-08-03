@@ -62,7 +62,7 @@ _Our setup is complete. Let’s move toward some common problems and their solut
 
 ---
 
-**First problem: _We need to set up a corn job that runs daily and performs a specific task._**
+**First problem: _We need to set up a cron job that runs daily and performs a specific task._**
 
 Let’s consider this:  
 `Event(title=’PYCON-2077’, remaining_days=20075)`
