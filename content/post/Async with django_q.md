@@ -13,8 +13,6 @@ author = "Gaurav Paudel"
 +++
 
 
-![](https://miro.medium.com/max/1400/1*lKovpT1kBDQdv6xsJu8eUQ.jpeg)Photy by [Roman Odintsov](https://www.pexels.com/photo/original-painting-of-gautama-buddha-on-wall-of-shabby-house-4552137/)
-
 > Some long-running tasks may affect the whole experience of software, so it’s better to offload those tasks and move on to perform other tasks.
 
 A bit about the django\_q package. It is indeed one of my favorite third-party packages built for Django. Using this package, we can queue our tasks, run tasks in another cluster and even perform some scheduled cron jobs.

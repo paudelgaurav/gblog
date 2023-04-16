@@ -12,7 +12,6 @@ date = 2022-06-29T18:19:13Z
 author = "Gaurav Paudel"
 +++
 
-![](https://miro.medium.com/max/1400/1*5cSylV22q9dghIEax3fqnA.jpeg)Photo by [Alex Blăjan](https://unsplash.com/@alexb?utm_source=unsplash&utm_medium=referral&utm_content=creditCopyText) on [Unsplash](https://unsplash.com/s/photos/slow?utm_source=unsplash&utm_medium=referral&utm_content=creditCopyText)
 
 > The major bottleneck lies in our database portion so, we will be focusing on optimizing our database queries and lookups.
 

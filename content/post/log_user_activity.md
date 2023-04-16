@@ -12,8 +12,6 @@ author = "Gaurav Paudel"
 +++
 
 
-![](https://miro.medium.com/max/1280/1*rqR2HOLKFlR-o6BQagT0QA.jpeg)Photo by [Parker Coffman](https://unsplash.com/@lackingnothing?utm_source=unsplash&utm_medium=referral&utm_content=creditCopyText) on [Unsplash](https://unsplash.com/s/photos/spy?utm_source=unsplash&utm_medium=referral&utm_content=creditCopyText)
-
 Here I will be demonstrating a simple way to track API-endpoints hits in Django.
 
 First, let’s build our `ActivityLog` model
